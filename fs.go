@@ -436,7 +436,8 @@ func ServeFile(w http.ResponseWriter, r *http.Request, name string) {
 }
 
 type fileHandler struct {
-	root http.FileSystem
+	root          http.FileSystem
+	delayFilesNum int8
 }
 
 // FileServer returns a handler that serves HTTP requests
@@ -446,12 +447,29 @@ type fileHandler struct {
 // use http.Dir:
 //
 //     http.Handle("/", http.FileServer(http.Dir("/tmp")))
-func FileServer(root http.FileSystem) http.Handler {
-	return &fileHandler{root}
+func FileServer(root http.FileSystem, delayFilesNum int8) http.Handler {
+	return &fileHandler{root, delayFilesNum}
 }
 
 func (f *fileHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	originPath := r.URL.Path
 	upath := r.URL.Path
+	if f.delayFilesNum != 0 && strings.Index(upath, "ts") > -1 {
+		tsFile := strings.Split(filepath.Base(upath), ".")
+		tsIntFile, err := strconv.Atoi(tsFile[0])
+		if err != nil {
+			NotFound(w, r)
+			return
+		}
+
+		tsFileByDelay := tsIntFile - int(f.delayFilesNum)
+
+		upath = strings.Replace(upath, filepath.Base(upath), fmt.Sprintf("%d.ts", tsFileByDelay), 1)
+		r.URL.Path = upath
+	}
+
+	fmt.Printf("OrignPath:%s,Path:%s \n", originPath, upath)
+
 	if !strings.HasPrefix(upath, "/") {
 		upath = "/" + upath
 		r.URL.Path = upath
